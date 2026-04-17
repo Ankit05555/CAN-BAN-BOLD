@@ -1,1 +1,452 @@
+const API_URL = "YOUR_GAS_WEB_APP_URL_HERE";
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Kanban Board</title>
+<style>
+  /* ── Reset & base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+  body {
+    font-family: system-ui, sans-serif;
+    background: #0f1117;
+    color: #e2e8f0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  header {
+    padding: 20px 32px;
+    background: #1a1d27;
+    border-bottom: 1px solid #2d3148;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  header h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.3px; }
+  header span { font-size: 13px; color: #6b7280; }
+
+  /* ── Board ── */
+  #board {
+    display: flex;
+    gap: 20px;
+    padding: 28px 32px;
+    flex: 1;
+    overflow-x: auto;
+  }
+
+  /* ── Column ── */
+  .column {
+    background: #1a1d27;
+    border: 1px solid #2d3148;
+    border-radius: 12px;
+    width: 300px;
+    min-width: 300px;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 120px);
+  }
+
+  .col-header {
+    padding: 14px 16px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #2d3148;
+  }
+  .col-title {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .col-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .dot-todo     { background: #6b7280; }
+  .dot-inprog   { background: #f59e0b; }
+  .dot-done     { background: #10b981; }
+
+  .col-count {
+    font-size: 12px;
+    background: #2d3148;
+    color: #9ca3af;
+    border-radius: 999px;
+    padding: 1px 8px;
+  }
+
+  /* ── Cards container ── */
+  .cards {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  /* ── Card ── */
+  .card {
+    background: #252836;
+    border: 1px solid #2d3148;
+    border-radius: 8px;
+    padding: 12px 14px;
+    cursor: grab;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    transition: border-color 0.15s, transform 0.1s, box-shadow 0.1s;
+    user-select: none;
+  }
+  .card:hover {
+    border-color: #4b5563;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+  .card.dragging {
+    opacity: 0.4;
+    cursor: grabbing;
+  }
+  .card-title { font-size: 14px; line-height: 1.5; flex: 1; }
+
+  .delete-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #4b5563;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 2px;
+    transition: color 0.15s;
+    flex-shrink: 0;
+  }
+  .delete-btn:hover { color: #ef4444; }
+
+  /* ── Drop zone highlight ── */
+  .column.drag-over .cards {
+    background: rgba(99,102,241,0.08);
+    border-radius: 8px;
+  }
+
+  /* ── Add task area ── */
+  .add-area {
+    padding: 10px 12px 12px;
+    border-top: 1px solid #2d3148;
+  }
+  .add-area textarea {
+    width: 100%;
+    background: #0f1117;
+    border: 1px solid #2d3148;
+    border-radius: 8px;
+    color: #e2e8f0;
+    font-family: inherit;
+    font-size: 13px;
+    padding: 8px 10px;
+    resize: none;
+    height: 60px;
+    transition: border-color 0.15s;
+    display: none;
+  }
+  .add-area textarea:focus {
+    outline: none;
+    border-color: #6366f1;
+  }
+  .add-area textarea.visible { display: block; }
+
+  .add-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .btn-add-confirm {
+    background: #6366f1;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    display: none;
+    transition: background 0.15s;
+  }
+  .btn-add-confirm:hover { background: #4f46e5; }
+  .btn-add-confirm.visible { display: inline-block; }
+
+  .btn-open-add {
+    width: 100%;
+    background: none;
+    border: 1px dashed #2d3148;
+    border-radius: 8px;
+    color: #6b7280;
+    font-size: 13px;
+    padding: 7px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+    text-align: left;
+  }
+  .btn-open-add:hover { border-color: #6366f1; color: #a5b4fc; }
+
+  /* ── Toast notification ── */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: #1e2030;
+    border: 1px solid #2d3148;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 13px;
+    color: #a5b4fc;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none;
+  }
+  #toast.show { opacity: 1; transform: translateY(0); }
+
+  /* ── Spinner ── */
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid #2d3148;
+    border-top-color: #6366f1;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin: 20px auto;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🗂 Kanban Board</h1>
+  <span id="sync-status">Loading…</span>
+</header>
+
+<div id="board">
+  <!-- columns injected by JS -->
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ─────────────────────────────────────────────
+//  CONFIG — paste your GAS URL here
+// ─────────────────────────────────────────────
+const API_URL = "YOUR_GAS_WEB_APP_URL_HERE";
+
+// ─────────────────────────────────────────────
+//  Column definitions
+// ─────────────────────────────────────────────
+const COLUMNS = [
+  { id: "todo",       label: "To Do",       dot: "dot-todo"   },
+  { id: "inprogress", label: "In Progress",  dot: "dot-inprog" },
+  { id: "done",       label: "Done",         dot: "dot-done"   },
+];
+
+// ─────────────────────────────────────────────
+//  State
+// ─────────────────────────────────────────────
+let tasks = [];
+let draggedId = null;
+
+// ─────────────────────────────────────────────
+//  API helpers
+// ─────────────────────────────────────────────
+async function apiGet() {
+  const res = await fetch(API_URL);
+  const data = await res.json();
+  return data.tasks || [];
+}
+
+async function apiPost(payload) {
+  const res = await fetch(API_URL, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
+// ─────────────────────────────────────────────
+//  Toast helper
+// ─────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2500);
+}
+
+// ─────────────────────────────────────────────
+//  Render
+// ─────────────────────────────────────────────
+function render() {
+  const board = document.getElementById("board");
+  board.innerHTML = "";
+
+  COLUMNS.forEach(col => {
+    const colTasks = tasks.filter(t => t.column === col.id);
+
+    const colEl = document.createElement("div");
+    colEl.className = "column";
+    colEl.dataset.col = col.id;
+
+    colEl.innerHTML = `
+      <div class="col-header">
+        <span class="col-title">
+          <span class="col-dot ${col.dot}"></span>${col.label}
+        </span>
+        <span class="col-count">${colTasks.length}</span>
+      </div>
+      <div class="cards" id="cards-${col.id}"></div>
+      <div class="add-area">
+        <button class="btn-open-add" onclick="openAdd('${col.id}')">+ Add task</button>
+        <textarea id="ta-${col.id}" class="add-input" placeholder="Task title…"></textarea>
+        <div class="add-row">
+          <button class="btn-add-confirm" id="btn-${col.id}" onclick="submitAdd('${col.id}')">Add</button>
+        </div>
+      </div>
+    `;
+
+    // Drag-over events on column
+    colEl.addEventListener("dragover", e => {
+      e.preventDefault();
+      colEl.classList.add("drag-over");
+    });
+    colEl.addEventListener("dragleave", () => colEl.classList.remove("drag-over"));
+    colEl.addEventListener("drop", e => {
+      e.preventDefault();
+      colEl.classList.remove("drag-over");
+      if (draggedId) moveTask(draggedId, col.id);
+    });
+
+    board.appendChild(colEl);
+
+    // Render cards
+    const cardsEl = document.getElementById(`cards-${col.id}`);
+    colTasks.forEach(task => {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.draggable = true;
+      card.dataset.id = task.id;
+      card.innerHTML = `
+        <span class="card-title">${escapeHtml(task.title)}</span>
+        <button class="delete-btn" title="Delete" onclick="deleteTask('${task.id}')">✕</button>
+      `;
+      card.addEventListener("dragstart", () => {
+        draggedId = task.id;
+        card.classList.add("dragging");
+      });
+      card.addEventListener("dragend", () => {
+        draggedId = null;
+        card.classList.remove("dragging");
+      });
+      cardsEl.appendChild(card);
+    });
+  });
+
+  document.getElementById("sync-status").textContent =
+    `${tasks.length} task${tasks.length !== 1 ? "s" : ""}`;
+}
+
+// ─────────────────────────────────────────────
+//  Add task UI
+// ─────────────────────────────────────────────
+function openAdd(colId) {
+  const ta  = document.getElementById(`ta-${colId}`);
+  const btn = document.getElementById(`btn-${colId}`);
+  ta.classList.add("visible");
+  btn.classList.add("visible");
+  ta.focus();
+
+  // Submit on Enter (not Shift+Enter)
+  ta.onkeydown = e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitAdd(colId); }
+    if (e.key === "Escape") { ta.classList.remove("visible"); btn.classList.remove("visible"); }
+  };
+}
+
+async function submitAdd(colId) {
+  const ta = document.getElementById(`ta-${colId}`);
+  const title = ta.value.trim();
+  if (!title) return;
+
+  ta.value = "";
+  ta.classList.remove("visible");
+  document.getElementById(`btn-${colId}`).classList.remove("visible");
+  showToast("Adding task…");
+
+  const res = await apiPost({ action: "add", title, column: colId });
+  if (res.status === "ok") {
+    tasks.push({ id: res.id, title, column: colId, created: new Date().toISOString() });
+    render();
+    showToast("Task added ✓");
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Move task (drag & drop)
+// ─────────────────────────────────────────────
+async function moveTask(id, newCol) {
+  const task = tasks.find(t => t.id === id);
+  if (!task || task.column === newCol) return;
+
+  task.column = newCol; // optimistic update
+  render();
+  showToast("Moving…");
+
+  const res = await apiPost({ action: "move", id, column: newCol });
+  if (res.status !== "ok") showToast("Error moving task");
+  else showToast("Moved ✓");
+}
+
+// ─────────────────────────────────────────────
+//  Delete task
+// ─────────────────────────────────────────────
+async function deleteTask(id) {
+  tasks = tasks.filter(t => t.id !== id); // optimistic update
+  render();
+  showToast("Deleting…");
+
+  const res = await apiPost({ action: "delete", id });
+  if (res.status !== "ok") showToast("Error deleting task");
+  else showToast("Deleted ✓");
+}
+
+// ─────────────────────────────────────────────
+//  Utility
+// ─────────────────────────────────────────────
+function escapeHtml(str) {
+  return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// ─────────────────────────────────────────────
+//  Boot
+// ─────────────────────────────────────────────
+(async () => {
+  document.getElementById("sync-status").textContent = "Syncing…";
+  try {
+    tasks = await apiGet();
+    render();
+  } catch (err) {
+    document.getElementById("sync-status").textContent = "Connection error";
+    document.getElementById("board").innerHTML =
+      `<p style="color:#ef4444;padding:32px">Could not reach API. Check your API_URL.</p>`;
+  }
+})();
+</script>
+</body>
+</html>
